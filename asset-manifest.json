@@ -1,0 +1,21 @@
+{
+  "files": {
+    "main.css": "/tool-pro-editor/static/css/main.ca67ef22.css",
+    "main.js": "/tool-pro-editor/static/js/main.00cba6fb.js",
+    "static/js/239.d27c8b9e.chunk.js": "/tool-pro-editor/static/js/239.d27c8b9e.chunk.js",
+    "static/js/213.407a8891.chunk.js": "/tool-pro-editor/static/js/213.407a8891.chunk.js",
+    "static/js/455.ccf055cb.chunk.js": "/tool-pro-editor/static/js/455.ccf055cb.chunk.js",
+    "static/js/488.93c39050.chunk.js": "/tool-pro-editor/static/js/488.93c39050.chunk.js",
+    "index.html": "/tool-pro-editor/index.html",
+    "main.ca67ef22.css.map": "/tool-pro-editor/static/css/main.ca67ef22.css.map",
+    "main.00cba6fb.js.map": "/tool-pro-editor/static/js/main.00cba6fb.js.map",
+    "239.d27c8b9e.chunk.js.map": "/tool-pro-editor/static/js/239.d27c8b9e.chunk.js.map",
+    "213.407a8891.chunk.js.map": "/tool-pro-editor/static/js/213.407a8891.chunk.js.map",
+    "455.ccf055cb.chunk.js.map": "/tool-pro-editor/static/js/455.ccf055cb.chunk.js.map",
+    "488.93c39050.chunk.js.map": "/tool-pro-editor/static/js/488.93c39050.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.ca67ef22.css",
+    "static/js/main.00cba6fb.js"
+  ]
+}
