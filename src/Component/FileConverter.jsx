@@ -23,13 +23,13 @@ const FileConverter = ({ darkMode }) => {
     const [progress, setProgress] = useState(0);
 
     const supportedFormats = {
-        pdf: { name: 'PDF', icon: FileText, color: '#FF6B6B' },
-        docx: { name: 'DOCX', icon: File, color: '#4ECDC4' },
-        txt: { name: 'TXT', icon: Type, color: '#45B7D1' },
-        html: { name: 'HTML', icon: Code, color: '#96CEB4' },
-        png: { name: 'PNG', icon: Image, color: '#FFEAA7' },
-        jpg: { name: 'JPG', icon: Image, color: '#DDA0DD' },
-        zip: { name: 'ZIP', icon: Archive, color: '#98D8C8' }
+        pdf: { name: 'PDF', icon: FileText, color: '#FF6B6B', accept: '.pdf,.docx,.txt,.html,.jpg,.jpeg,.png' },
+        docx: { name: 'DOCX', icon: File, color: '#4ECDC4', accept: '.pdf,.txt,.html' },
+        txt: { name: 'TXT', icon: Type, color: '#45B7D1', accept: '.pdf,.docx,.txt,.html' },
+        html: { name: 'HTML', icon: Code, color: '#96CEB4', accept: '.pdf,.docx,.txt,.html' },
+        png: { name: 'PNG', icon: Image, color: '#FFEAA7', accept: '.jpg,.jpeg,.png,.pdf' },
+        jpg: { name: 'JPG', icon: Image, color: '#DDA0DD', accept: '.jpg,.jpeg,.png,.pdf' },
+        zip: { name: 'ZIP', icon: Archive, color: '#98D8C8', accept: '*' }
     };
 
     const handleFileChange = (e) => {
@@ -67,23 +67,114 @@ const FileConverter = ({ darkMode }) => {
         });
     };
 
-    const convertToPDF = async (file) => {
-        // Simple PDF conversion simulation
-        const text = await file.text();
+    // Convert text content to PDF
+    const textToPDF = async (text, fileName) => {
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF();
-        doc.text(text, 10, 10);
+        
+        // Split text into lines that fit the page width
+        const lines = doc.splitTextToSize(text, 180);
+        let yPosition = 20;
+        const lineHeight = 7;
+        
+        for (let i = 0; i < lines.length; i++) {
+            if (yPosition > 280) {
+                doc.addPage();
+                yPosition = 20;
+            }
+            doc.text(lines[i], 10, yPosition);
+            yPosition += lineHeight;
+        }
+        
         return doc.output('blob');
     };
 
+    // Convert image to PDF
+    const imageToPDF = async (file) => {
+        const { jsPDF } = await import('jspdf');
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const doc = new jsPDF();
+                const width = doc.internal.pageSize.getWidth();
+                const height = (img.height * width) / img.width;
+                
+                doc.addImage(img, 'JPEG', 0, 0, width, height);
+                resolve(doc.output('blob'));
+            };
+            img.src = URL.createObjectURL(file);
+        });
+    };
+
+    // Convert HTML to PDF
+    const htmlToPDF = async (htmlContent, fileName) => {
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF();
+        
+        // Simple HTML to text conversion for demo
+        const text = htmlContent.replace(/<[^>]*>/g, '');
+        const lines = doc.splitTextToSize(text, 180);
+        let yPosition = 20;
+        
+        for (let i = 0; i < lines.length; i++) {
+            if (yPosition > 280) {
+                doc.addPage();
+                yPosition = 20;
+            }
+            doc.text(lines[i], 10, yPosition);
+            yPosition += 7;
+        }
+        
+        return doc.output('blob');
+    };
+
+    const convertToPDF = async (file) => {
+        const fileType = file.type;
+        const fileName = file.name.split('.')[0];
+
+        if (fileType === 'application/pdf') {
+            return file;
+        } else if (fileType.startsWith('image/')) {
+            return await imageToPDF(file);
+        } else if (fileType === 'text/html') {
+            const text = await file.text();
+            return await htmlToPDF(text, fileName);
+        } else if (fileType === 'text/plain' || fileType.includes('document')) {
+            const text = await file.text();
+            return await textToPDF(text, fileName);
+        } else {
+            throw new Error('Unsupported file type for PDF conversion');
+        }
+    };
+
     const convertToTXT = async (file) => {
-        if (file.type === 'text/plain') return file;
-        const text = await file.text();
-        return new Blob([text], { type: 'text/plain' });
+        const fileType = file.type;
+        
+        if (fileType === 'text/plain') {
+            return file;
+        } else if (fileType === 'application/pdf') {
+            // Simple PDF to text extraction
+            const arrayBuffer = await file.arrayBuffer();
+            const text = new TextDecoder().decode(arrayBuffer);
+            // Remove binary characters and keep only readable text
+            const cleanText = text.replace(/[^\x20-\x7E\n\r\t]/g, '');
+            return new Blob([cleanText], { type: 'text/plain' });
+        } else if (fileType.includes('document') || fileType === 'text/html') {
+            const text = await file.text();
+            // Remove HTML tags for clean text
+            const cleanText = text.replace(/<[^>]*>/g, '');
+            return new Blob([cleanText], { type: 'text/plain' });
+        } else {
+            throw new Error('Unsupported file type for TXT conversion');
+        }
     };
 
     const convertImageFormat = async (file, targetFormat) => {
-        return new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) {
+            throw new Error('Please upload an image file for image conversion');
+        }
+
+        return new Promise((resolve, reject) => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const img = new Image();
@@ -92,11 +183,73 @@ const FileConverter = ({ darkMode }) => {
                 canvas.width = img.width;
                 canvas.height = img.height;
                 ctx.drawImage(img, 0, 0);
-                canvas.toBlob(resolve, `image/${targetFormat}`);
+                
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Image conversion failed'));
+                    }
+                }, `image/${targetFormat}`, 0.9);
             };
             
+            img.onerror = () => reject(new Error('Failed to load image'));
             img.src = URL.createObjectURL(file);
         });
+    };
+
+    const convertToHTML = async (file) => {
+        const fileType = file.type;
+        const fileName = file.name.split('.')[0];
+        
+        if (fileType === 'text/html') {
+            return file;
+        } else if (fileType === 'text/plain') {
+            const text = await file.text();
+            const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>${fileName}</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>${fileName}</h1>
+    <pre>${text}</pre>
+</body>
+</html>`;
+            return new Blob([htmlContent], { type: 'text/html' });
+        } else {
+            const text = await file.text();
+            const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Converted File</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <pre>${text}</pre>
+</body>
+</html>`;
+            return new Blob([htmlContent], { type: 'text/html' });
+        }
+    };
+
+    const convertToDOCX = async (file) => {
+        // For DOCX conversion, we'll create a simple text-based document
+        // In a real application, you would use a library like docx.js
+        const text = await file.text();
+        const docxContent = `This is a simulated DOCX conversion.\n\nOriginal content:\n\n${text}`;
+        return new Blob([docxContent], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    };
+
+    const convertToZIP = async (file) => {
+        // Simple ZIP simulation - in real app, use JSZip library
+        const arrayBuffer = await file.arrayBuffer();
+        return new Blob([arrayBuffer], { type: 'application/zip' });
     };
 
     const handleConvert = async () => {
@@ -124,20 +277,16 @@ const FileConverter = ({ darkMode }) => {
                     break;
                 case 'png':
                 case 'jpg':
-                    if (file.type.startsWith('image/')) {
-                        convertedBlob = await convertImageFormat(file, format);
-                    } else {
-                        throw new Error('Please upload an image file for image conversion');
-                    }
+                    convertedBlob = await convertImageFormat(file, format);
                     break;
-                case 'zip':
-                    // Simple zip simulation - in real app, use JSZip library
-                    convertedBlob = new Blob([file], { type: 'application/zip' });
+                case 'html':
+                    convertedBlob = await convertToHTML(file);
                     break;
                 case 'docx':
-                case 'html':
-                    // For demo purposes - in real app, use proper conversion libraries
-                    convertedBlob = new Blob([file], { type: `application/${format}` });
+                    convertedBlob = await convertToDOCX(file);
+                    break;
+                case 'zip':
+                    convertedBlob = await convertToZIP(file);
                     break;
                 default:
                     throw new Error('Unsupported format');
@@ -150,6 +299,7 @@ const FileConverter = ({ darkMode }) => {
                 message: `File successfully converted to ${format.toUpperCase()}!` 
             });
         } catch (error) {
+            console.error('Conversion error:', error);
             setConversionStatus({ 
                 type: 'error', 
                 message: error.message || 'Conversion failed. Please try again.' 
@@ -160,7 +310,25 @@ const FileConverter = ({ darkMode }) => {
         }
     };
 
+    const handleDrop = (e) => {
+        e.preventDefault();
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile) {
+            setFile(droppedFile);
+            setConversionStatus(null);
+            setProgress(0);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+    };
+
     const FormatIcon = supportedFormats[format]?.icon || FileText;
+
+    const getFileAccept = () => {
+        return supportedFormats[format]?.accept || '*';
+    };
 
     return (
         <Card className={`h-100 ${darkMode ? 'card-glass-dark' : 'card-glass-light'} border-0 shadow-lg hover-lift`}>
@@ -189,6 +357,8 @@ const FileConverter = ({ darkMode }) => {
                                 }`}
                                 style={{ border: '2px dashed', minHeight: '120px' }}
                                 onClick={() => document.getElementById('file-upload').click()}
+                                onDrop={handleDrop}
+                                onDragOver={handleDragOver}
                             >
                                 <Upload size={32} className="text-muted mb-2" />
                                 <p className="text-muted mb-2">
@@ -206,7 +376,7 @@ const FileConverter = ({ darkMode }) => {
                                         <div>
                                             <div className="fw-semibold">{file.name}</div>
                                             <small className="text-muted">
-                                                {(file.size / 1024 / 1024).toFixed(2)} MB
+                                                {(file.size / 1024 / 1024).toFixed(2)} MB • {file.type}
                                             </small>
                                         </div>
                                     </div>
@@ -226,7 +396,7 @@ const FileConverter = ({ darkMode }) => {
                             type="file"
                             onChange={handleFileChange}
                             className="d-none"
-                            accept=".pdf,.docx,.txt,.html,.jpg,.jpeg,.png,.zip"
+                            accept={getFileAccept()}
                         />
                     </Form.Group>
                 </div>
@@ -321,7 +491,7 @@ const FileConverter = ({ darkMode }) => {
                     <div className="mt-3 p-3 rounded-3 bg-opacity-10 bg-primary">
                         <div className="row text-center">
                             <div className="col-4">
-                                <div className="small text-muted">Format</div>
+                                <div className="small text-muted">Current Format</div>
                                 <div className="fw-semibold">{file.type.split('/')[1]?.toUpperCase() || 'UNKNOWN'}</div>
                             </div>
                             <div className="col-4">
@@ -329,12 +499,24 @@ const FileConverter = ({ darkMode }) => {
                                 <div className="fw-semibold">{(file.size / 1024).toFixed(1)} KB</div>
                             </div>
                             <div className="col-4">
-                                <div className="small text-muted">Target</div>
+                                <div className="small text-muted">Target Format</div>
                                 <div className="fw-semibold">{format.toUpperCase()}</div>
                             </div>
                         </div>
                     </div>
                 )}
+
+                {/* Conversion Tips */}
+                <div className="mt-3">
+                    <small className="text-muted">
+                        <strong>Tips:</strong> 
+                        <ul className="mb-0 ps-3">
+                            <li>Text files work best for PDF conversion</li>
+                            <li>Images are converted to PDF with one image per page</li>
+                            <li>Large files may take longer to process</li>
+                        </ul>
+                    </small>
+                </div>
             </Card.Body>
 
             {/* Add custom styles */}
